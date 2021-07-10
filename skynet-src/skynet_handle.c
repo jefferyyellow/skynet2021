@@ -10,25 +10,34 @@
 
 #define DEFAULT_SLOT_SIZE 4
 #define MAX_SLOT_SIZE 0x40000000
-
+// 这个结构用于记录，服务对应的别名，当应用层为某个服务命名时，会写到这里来
 struct handle_name {
+	// 服务别名
 	char * name;
+	// 服务id
 	uint32_t handle;
 };
 
+// handle_storage用于管理创建出来的skynet_context实例
 struct handle_storage {
+	// 读写锁
 	struct rwlock lock;
-
+	// 港口ID
 	uint32_t harbor;
+	// 创建下一个服务时，该服务的slot idx，一般会先判断该slot是否被占用
 	uint32_t handle_index;
+	// slot的大小，一定是2^n，初始值是4
 	int slot_size;
+	// 服务列表（skynet_context list）
 	struct skynet_context ** slot;
-	
+	// 别名列表大小，大小为2^n
 	int name_cap;
+	// 别名数量
 	int name_count;
+	// 别名列表
 	struct handle_name *name;
 };
-
+// 全局的服务列表中
 static struct handle_storage *H = NULL;
 
 uint32_t
@@ -243,20 +252,27 @@ skynet_handle_namehandle(uint32_t handle, const char *name) {
 	return ret;
 }
 
+// 初始化全局的服务列表
 void 
 skynet_handle_init(int harbor) {
 	assert(H==NULL);
+	// 分配内存，默认值分配4个slot
 	struct handle_storage * s = skynet_malloc(sizeof(*H));
 	s->slot_size = DEFAULT_SLOT_SIZE;
 	s->slot = skynet_malloc(s->slot_size * sizeof(struct skynet_context *));
 	memset(s->slot, 0, s->slot_size * sizeof(struct skynet_context *));
-
+	// 初始化读写锁
 	rwlock_init(&s->lock);
 	// reserve 0 for system
+	// 记录港口索引
 	s->harbor = (uint32_t) (harbor & 0xff) << HANDLE_REMOTE_SHIFT;
+	// 初始化创建下一个服务时slot index为1
 	s->handle_index = 1;
+	// 别名列表大小默认为1
 	s->name_cap = 2;
+	// 别名列表数量为0
 	s->name_count = 0;
+	// 别名列表分配内存
 	s->name = skynet_malloc(s->name_cap * sizeof(struct handle_name));
 
 	H = s;

@@ -62,13 +62,20 @@ struct skynet_context {
 };
 
 struct skynet_node {
+	// 服务(context)的数量
 	ATOM_INT total;
+	// 是否已经初始化
 	int init;
+	// 服务退出监测
 	uint32_t monitor_exit;
+	// 线程局部存储的键，用来分辨是什么类型的线程
+	// skynet主要是4中线程：socket线程，monitor线程，timer线程，worker线程，主线程
 	pthread_key_t handle_key;
+	// 是否做性能的统计
 	bool profile;	// default is off
 };
 
+// 全局节点
 static struct skynet_node G_NODE;
 
 int 
@@ -808,30 +815,39 @@ skynet_context_send(struct skynet_context * ctx, void * msg, size_t sz, uint32_t
 	skynet_mq_push(ctx->queue, &smsg);
 }
 
+// 全局的初始化
+// 全局节点的初始化
 void 
 skynet_globalinit(void) {
+	// 将服务的数量原子操作初始化为0，
 	ATOM_INIT(&G_NODE.total , 0);
 	G_NODE.monitor_exit = 0;
 	G_NODE.init = 1;
+	// 创建线程的局部数据新键
 	if (pthread_key_create(&G_NODE.handle_key, NULL)) {
 		fprintf(stderr, "pthread_key_create failed");
 		exit(1);
 	}
 	// set mainthread's key
+	// 将当前的线程标记为主线程
 	skynet_initthread(THREAD_MAIN);
 }
 
+// 全局的退出时清理
+// 将创建的线程局部数据键销毁
 void 
 skynet_globalexit(void) {
 	pthread_key_delete(G_NODE.handle_key);
 }
 
+// 初始化线程的类型
 void
 skynet_initthread(int m) {
 	uintptr_t v = (uint32_t)(-m);
 	pthread_setspecific(G_NODE.handle_key, (void *)v);
 }
 
+// 设置全局的性能统计标志
 void
 skynet_profile_enable(int enable) {
 	G_NODE.profile = (bool)enable;

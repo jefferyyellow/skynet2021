@@ -21,8 +21,9 @@ int skynet_context_total();
 void skynet_context_dispatchall(struct skynet_context * context);	// for skynet_error output before exit
 
 void skynet_context_endless(uint32_t handle);	// for monitor
-
+// 全局的初始化
 void skynet_globalinit(void);
+// 全局的退出时清理
 void skynet_globalexit(void);
 void skynet_initthread(int m);
 

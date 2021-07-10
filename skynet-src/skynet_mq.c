@@ -18,26 +18,41 @@
 #define MQ_IN_GLOBAL 1
 #define MQ_OVERLOAD 1024
 
+// 服务消息队列(次级消息队列)
 struct message_queue {
+	// 自旋锁
 	struct spinlock lock;
+	// 拥有此消息队列的服务的id
 	uint32_t handle;
+	// 消息队列大小
 	int cap;
+	// 消息队列头index
 	int head;
+	// 消息队列尾index
 	int tail;
+	// 是否能释放消息
 	int release;
+	// 是否在全局消息队列中，0表示不是（分发的时候也不在全局队列中），1表示是
 	int in_global;
+	// 是否过载
 	int overload;
 	int overload_threshold;
+	// 消息队列
 	struct skynet_message *queue;
+	// 下一个次级消息队列的指针(用于全局消息队列中组成一个单链表)
 	struct message_queue *next;
 };
 
+// 全局消息队列
 struct global_queue {
+	// 全局消息队列头(本身是一个次级消息队列)
 	struct message_queue *head;
+	// 全局消息队列尾(本身是一个次级消息队列)
 	struct message_queue *tail;
+	// 自旋锁
 	struct spinlock lock;
 };
-
+// 全局消息队列
 static struct global_queue *Q = NULL;
 
 void 
@@ -207,11 +222,13 @@ skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 	
 	SPIN_UNLOCK(q)
 }
-
+// 初始化消息列表
 void 
 skynet_mq_init() {
+	// 分配全局消息列表内存
 	struct global_queue *q = skynet_malloc(sizeof(*q));
 	memset(q,0,sizeof(*q));
+	// 初始化全局消息列表的自旋锁
 	SPIN_INIT(q);
 	Q=q;
 }

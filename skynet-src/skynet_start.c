@@ -254,24 +254,37 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 	}
 }
 
+// skynet初始化完成后，开始启动运行
 void 
 skynet_start(struct skynet_config * config) {
+	// SIGHUP会在以下3种情况下被发送给相应的进程：
+	// 1、终端关闭时，该信号被发送到session首进程以及作为job提交的进程（即用 & 符号提交的进程）
+	// 2、session首进程退出时，该信号被发送到该session中的前台进程组和后台进程组中的每一个进程
+	// 3、若进程的退出，导致一个进程组变成了孤儿进程组，且新出现的孤儿进程组中有进程处于停止状态，则SIGHUP和SIGCONT信号会按顺序先后发送到新孤儿进程组中的每一个进程。
 	// register SIGHUP for log file reopen
+	// 注册SIGHUP以便log文件重新打开,注意结合守护进程的情况
 	struct sigaction sa;
 	sa.sa_handler = &handle_hup;
 	sa.sa_flags = SA_RESTART;
 	sigfillset(&sa.sa_mask);
 	sigaction(SIGHUP, &sa, NULL);
 
+	// 守护进程方式
 	if (config->daemon) {
+		// 创建守护进程
 		if (daemon_init(config->daemon)) {
 			exit(1);
 		}
 	}
+	// 初始化港口信息
 	skynet_harbor_init(config->harbor);
+	// 初始化全局的服务列表
 	skynet_handle_init(config->harbor);
+	// 初始化消息列表
 	skynet_mq_init();
+	// 初始化模块
 	skynet_module_init(config->module_path);
+	// 
 	skynet_timer_init();
 	skynet_socket_init();
 	skynet_profile_enable(config->profile);

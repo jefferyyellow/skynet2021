@@ -16,7 +16,7 @@ void skynet_handle_retireall();
 
 uint32_t skynet_handle_findname(const char * name);
 const char * skynet_handle_namehandle(uint32_t handle, const char *name);
-
+// 初始化全局的服务列表
 void skynet_handle_init(int harbor);
 
 #endif

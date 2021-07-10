@@ -11,11 +11,20 @@
 #include <stdio.h>
 
 #define MAX_MODULE_TYPE 32
+// 我们所写的C服务在编译成so库以后，会在某个时机被加载到一个modules的列表中，
+// 当要创建该类服务的实例时，将从modules列表取出该服务的函数句柄，
+// 调用create函数创建服务实例，并且init之后，将实例赋值给一个新的context对象后，
+// 注册到skynet_context list中，一个新的服务就创建完成了。
 
+// modules列表
 struct modules {
+	// module的数量
 	int count;
+	// module列表的自旋锁,避免多个线程同时向skynet_module写入数据，保证线程安全
 	struct spinlock lock;
+	// 由skynet配置表中的cpath指定，一般包含./cservice/?.so路径
 	const char * path;
+	// 存放服务模块的数组，最多32类
 	struct skynet_module m[MAX_MODULE_TYPE];
 };
 
@@ -170,12 +179,15 @@ skynet_module_instance_signal(struct skynet_module *m, void *inst, int signal) {
 	}
 }
 
+// 创建module列表
 void 
 skynet_module_init(const char *path) {
 	struct modules *m = skynet_malloc(sizeof(*m));
+	// 初始module的数量为0
 	m->count = 0;
+	// 复制path
 	m->path = skynet_strdup(path);
-
+	// 初始自旋锁
 	SPIN_INIT(m)
 
 	M = m;
