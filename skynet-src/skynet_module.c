@@ -37,6 +37,7 @@ _try_open(struct modules *m, const char * name) {
 	size_t path_size = strlen(path);
 	size_t name_size = strlen(name);
 
+	// 计算路径和名字连接在一起需要的空间总和
 	int sz = path_size + name_size;
 	//search path
 	void * dl = NULL;
@@ -44,22 +45,29 @@ _try_open(struct modules *m, const char * name) {
 	do
 	{
 		memset(tmp,0,sz);
+		// 如果是;就跳过
 		while (*path == ';') path++;
 		if (*path == '\0') break;
+		// 找到下一个;
 		l = strchr(path, ';');
+		// 如果没找到，就是将后面的都给它
 		if (l == NULL) l = path + strlen(path);
+
 		int len = l - path;
 		int i;
 		for (i=0;path[i]!='?' && i < len ;i++) {
 			tmp[i] = path[i];
 		}
+		// 将名字连接在后面
 		memcpy(tmp+i,name,name_size);
+		// 最后一个是?,?是名字的占位符而已，需要将path中?后面的复制过来
 		if (path[i] == '?') {
 			strncpy(tmp+i+name_size,path+i+1,len - i - 1);
 		} else {
 			fprintf(stderr,"Invalid C service path\n");
 			exit(1);
 		}
+		// 打开对应的动态库
 		dl = dlopen(tmp, RTLD_NOW | RTLD_GLOBAL);
 		path = l;
 	}while(dl == NULL);
@@ -71,6 +79,7 @@ _try_open(struct modules *m, const char * name) {
 	return dl;
 }
 
+// 通过名字找到对应的模块
 static struct skynet_module * 
 _query(const char * name) {
 	int i;
@@ -82,6 +91,7 @@ _query(const char * name) {
 	return NULL;
 }
 
+// 得到模块中的API
 static void *
 get_api(struct skynet_module *mod, const char *api_name) {
 	size_t name_size = strlen(mod->name);
@@ -89,6 +99,7 @@ get_api(struct skynet_module *mod, const char *api_name) {
 	char tmp[name_size + api_size + 1];
 	memcpy(tmp, mod->name, name_size);
 	memcpy(tmp+name_size, api_name, api_size+1);
+	// .后面的才是api的名字
 	char *ptr = strrchr(tmp, '.');
 	if (ptr == NULL) {
 		ptr = tmp;
@@ -98,6 +109,7 @@ get_api(struct skynet_module *mod, const char *api_name) {
 	return dlsym(mod->module, ptr);
 }
 
+// 得到_create,_init,_release,_signal的地址
 static int
 open_sym(struct skynet_module *mod) {
 	mod->create = get_api(mod, "_create");
@@ -108,6 +120,7 @@ open_sym(struct skynet_module *mod) {
 	return mod->init == NULL;
 }
 
+// 通过模块名查询模块
 struct skynet_module * 
 skynet_module_query(const char * name) {
 	struct skynet_module * result = _query(name);
@@ -116,15 +129,18 @@ skynet_module_query(const char * name) {
 
 	SPIN_LOCK(M)
 
+	// 加锁以后第二次校验
 	result = _query(name); // double check
 
 	if (result == NULL && M->count < MAX_MODULE_TYPE) {
 		int index = M->count;
+		// 打开对应的动态库
 		void * dl = _try_open(M,name);
 		if (dl) {
+			// 设置名字和对应的模块
 			M->m[index].name = name;
 			M->m[index].module = dl;
-
+			// 得到_create,_init,_release,_signal的地址
 			if (open_sym(&M->m[index]) == 0) {
 				M->m[index].name = skynet_strdup(name);
 				M->count ++;
@@ -137,7 +153,7 @@ skynet_module_query(const char * name) {
 
 	return result;
 }
-
+// 插入一个模块
 void 
 skynet_module_insert(struct skynet_module *mod) {
 	SPIN_LOCK(M)
@@ -151,6 +167,7 @@ skynet_module_insert(struct skynet_module *mod) {
 	SPIN_UNLOCK(M)
 }
 
+// 创建模块，调用模块的创建函数
 void * 
 skynet_module_instance_create(struct skynet_module *m) {
 	if (m->create) {
@@ -160,11 +177,13 @@ skynet_module_instance_create(struct skynet_module *m) {
 	}
 }
 
+// 初始化模块
 int
 skynet_module_instance_init(struct skynet_module *m, void * inst, struct skynet_context *ctx, const char * parm) {
 	return m->init(inst, ctx, parm);
 }
 
+// 释放模块
 void 
 skynet_module_instance_release(struct skynet_module *m, void *inst) {
 	if (m->release) {
@@ -172,6 +191,7 @@ skynet_module_instance_release(struct skynet_module *m, void *inst) {
 	}
 }
 
+// 调用该signal即是调用xxx_signal
 void
 skynet_module_instance_signal(struct skynet_module *m, void *inst, int signal) {
 	if (m->signal) {

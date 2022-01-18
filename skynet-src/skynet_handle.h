@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 // reserve high 8 bits for remote id
+// 保留高8位给远程id
 #define HANDLE_MASK 0xffffff
 #define HANDLE_REMOTE_SHIFT 24
 

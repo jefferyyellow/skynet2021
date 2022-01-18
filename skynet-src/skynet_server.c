@@ -41,20 +41,31 @@
 #endif
 
 struct skynet_context {
+	// 指定module的create函数，创建的数据实例指针，同一类服务可能有多个实例，
+	// 因此每个服务都应该有自己的数据
 	void * instance;
+	// 引用服务module的指针，方便后面对create、init、signal和release函数进行调用
 	struct skynet_module * mod;
+	// 调用callback函数时，回传给callback的userdata，一般是instance指针
 	void * cb_ud;
+	// 服务的消息回调函数，一般在skynet_module的init函数里指定
 	skynet_cb cb;
+	// 服务专属的次级消息队列指针
 	struct message_queue *queue;
+	// 日志句柄
 	ATOM_POINTER logfile;
 	uint64_t cpu_cost;	// in microsec
 	uint64_t cpu_start;	// in microsec
 	char result[32];
 	uint32_t handle;
+	// 在发出请求后，收到对方的返回消息时，通过session_id来匹配一个返回，对应哪个请求
 	int session_id;
+	// 引用计数变量，当为0时，表示内存可以被释放
 	ATOM_INT ref;
 	int message_count;
+	// 是否完成初始化
 	bool init;
+	// 消息是否堵住
 	bool endless;
 	bool profile;
 
@@ -78,21 +89,25 @@ struct skynet_node {
 // 全局节点
 static struct skynet_node G_NODE;
 
+// 得到服务(context)的数量
 int 
 skynet_context_total() {
 	return ATOM_LOAD(&G_NODE.total);
 }
 
+// 增加服务(context)的数量
 static void
 context_inc() {
 	ATOM_FINC(&G_NODE.total);
 }
 
+// 减少服务(context)的数量
 static void
 context_dec() {
 	ATOM_FDEC(&G_NODE.total);
 }
 
+// 得到
 uint32_t 
 skynet_current_handle(void) {
 	if (G_NODE.init) {
@@ -104,10 +119,12 @@ skynet_current_handle(void) {
 	}
 }
 
+// 将id转换成十六进制的字符串
 static void
 id_to_hex(char * str, uint32_t id) {
 	int i;
 	static char hex[16] = { '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F' };
+	// 最开始是：，然后才是28位的数字
 	str[0] = ':';
 	for (i=0;i<8;i++) {
 		str[i+1] = hex[(id >> ((7-i) * 4))&0xf];

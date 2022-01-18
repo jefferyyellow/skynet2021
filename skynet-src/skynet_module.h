@@ -23,11 +23,14 @@ struct skynet_module {
 	// 绑定so库中的xxx_signal函数，调用该signal即是调用xxx_signal
 	skynet_dl_signal signal;
 };
-
+// 插入一个模块
 void skynet_module_insert(struct skynet_module *mod);
+// 
 struct skynet_module * skynet_module_query(const char * name);
+// 创建模块，调用模块的创建函数
 void * skynet_module_instance_create(struct skynet_module *);
 int skynet_module_instance_init(struct skynet_module *, void * inst, struct skynet_context *ctx, const char * parm);
+// 释放模块
 void skynet_module_instance_release(struct skynet_module *, void *inst);
 void skynet_module_instance_signal(struct skynet_module *, void *inst, int signal);
 
