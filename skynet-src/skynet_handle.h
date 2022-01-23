@@ -6,6 +6,7 @@
 // reserve high 8 bits for remote id
 // 保留高8位给远程id
 #define HANDLE_MASK 0xffffff
+// 低24位为本地的句柄，高8位给集群用
 #define HANDLE_REMOTE_SHIFT 24
 
 struct skynet_context;

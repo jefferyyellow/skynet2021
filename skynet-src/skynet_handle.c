@@ -79,6 +79,8 @@ skynet_handle_register(struct skynet_context *ctx) {
 	}
 }
 
+
+// 实例(service)退出
 int
 skynet_handle_retire(uint32_t handle) {
 	int ret = 0;
@@ -86,6 +88,7 @@ skynet_handle_retire(uint32_t handle) {
 
 	rwlock_wlock(&s->lock);
 
+	// 通过句柄找到实例
 	uint32_t hash = handle & (s->slot_size-1);
 	struct skynet_context * ctx = s->slot[hash];
 
@@ -94,6 +97,8 @@ skynet_handle_retire(uint32_t handle) {
 		ret = 1;
 		int i;
 		int j=0, n=s->name_count;
+		// 遍历所有的别名,把匹配的释放掉
+		// 注意:把释放掉的后面的还往前挪,具体就是通过i和j的操作实现
 		for (i=0; i<n; ++i) {
 			if (s->name[i].handle == handle) {
 				skynet_free(s->name[i].name);
@@ -112,6 +117,7 @@ skynet_handle_retire(uint32_t handle) {
 
 	if (ctx) {
 		// release ctx may call skynet_handle_* , so wunlock first.
+		// 减少实例(service)的引用计数
 		skynet_context_release(ctx);
 	}
 
@@ -147,20 +153,24 @@ skynet_handle_grab(uint32_t handle) {
 	struct handle_storage *s = H;
 	struct skynet_context * result = NULL;
 
+	// 锁读锁
 	rwlock_rlock(&s->lock);
-
+	// 通过hash计算在slot的位置
 	uint32_t hash = handle & (s->slot_size-1);
 	struct skynet_context * ctx = s->slot[hash];
+	// 进行再一次的校验
 	if (ctx && skynet_context_handle(ctx) == handle) {
 		result = ctx;
 		skynet_context_grab(result);
 	}
 
+	// 解锁读锁
 	rwlock_runlock(&s->lock);
 
 	return result;
 }
 
+// 通过名字搜索句柄
 uint32_t 
 skynet_handle_findname(const char * name) {
 	struct handle_storage *s = H;
@@ -169,11 +179,13 @@ skynet_handle_findname(const char * name) {
 
 	uint32_t handle = 0;
 
+	// 下面是一个2分法搜索过程
 	int begin = 0;
 	int end = s->name_count - 1;
 	while (begin<=end) {
 		int mid = (begin+end)/2;
 		struct handle_name *n = &s->name[mid];
+		// 通过比较别名来匹配
 		int c = strcmp(n->name, name);
 		if (c==0) {
 			handle = n->handle;
@@ -190,41 +202,53 @@ skynet_handle_findname(const char * name) {
 
 	return handle;
 }
-
+// 在before前面插入名字
 static void
 _insert_name_before(struct handle_storage *s, char *name, uint32_t handle, int before) {
+	// 如果名字的数量已经大于等于容量
 	if (s->name_count >= s->name_cap) {
+		// 容量增加2
 		s->name_cap *= 2;
 		assert(s->name_cap <= MAX_SLOT_SIZE);
 		struct handle_name * n = skynet_malloc(s->name_cap * sizeof(struct handle_name));
 		int i;
+		// 拷贝before前面的部分
 		for (i=0;i<before;i++) {
 			n[i] = s->name[i];
 		}
+		// 拷贝before后面的部分,包括before
 		for (i=before;i<s->name_count;i++) {
 			n[i+1] = s->name[i];
 		}
+		// 释放原来的
 		skynet_free(s->name);
+		// 使用新的
 		s->name = n;
 	} else {
 		int i;
+		// 将后面的往后移
 		for (i=s->name_count;i>before;i--) {
 			s->name[i] = s->name[i-1];
 		}
 	}
+	// 将名字插入进去
 	s->name[before].name = name;
 	s->name[before].handle = handle;
 	s->name_count ++;
 }
 
+// 插入handle的名字name
 static const char *
 _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	int begin = 0;
 	int end = s->name_count - 1;
+	// 二分法查找名字,如果有重复的,直接返回
 	while (begin<=end) {
 		int mid = (begin+end)/2;
 		struct handle_name *n = &s->name[mid];
+		// 对比名字
 		int c = strcmp(n->name, name);
+		// 找到了
 		if (c==0) {
 			return NULL;
 		}
@@ -234,8 +258,9 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 			end = mid - 1;
 		}
 	}
+	// 复制一个名字并返回
 	char * result = skynet_strdup(name);
-
+	// 插入到begin前面
 	_insert_name_before(s, result, handle, begin);
 
 	return result;
@@ -244,7 +269,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 const char * 
 skynet_handle_namehandle(uint32_t handle, const char *name) {
 	rwlock_wlock(&H->lock);
-
+	// 插入一个实例句柄的名字
 	const char * ret = _insert_name(H, name, handle);
 
 	rwlock_wunlock(&H->lock);

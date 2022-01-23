@@ -24,9 +24,11 @@ skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session) {
 	skynet_context_send(REMOTE, rmsg, sizeof(*rmsg) , source, PTYPE_SYSTEM , session);
 }
 
+// 句柄是否为远程句柄，就是集群里面其他服务器的句柄
 int 
 skynet_harbor_message_isremote(uint32_t handle) {
 	assert(HARBOR != ~0);
+	// 取高8位的值，低24位置0
 	int h = (handle & ~HANDLE_MASK);
 	return h != HARBOR && h !=0;
 }
