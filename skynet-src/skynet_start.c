@@ -125,11 +125,14 @@ signal_hup() {
 	}
 }
 
+// 时间线程函数
 static void *
 thread_timer(void *p) {
 	struct monitor * m = p;
+	// 初始化时间线程为当前的线程类型
 	skynet_initthread(THREAD_TIMER);
 	for (;;) {
+		// 更新时间
 		skynet_updatetime();
 		skynet_socket_updatetime();
 		CHECK_ABORT
@@ -141,8 +144,10 @@ thread_timer(void *p) {
 		}
 	}
 	// wakeup socket thread
+	// 唤醒socket线程
 	skynet_socket_exit();
 	// wakeup all worker thread
+	// 唤醒所有的工作线程
 	pthread_mutex_lock(&m->mutex);
 	m->quit = 1;
 	pthread_cond_broadcast(&m->cond);

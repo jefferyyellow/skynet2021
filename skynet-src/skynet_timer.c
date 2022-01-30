@@ -53,10 +53,11 @@ struct timer {
 	struct spinlock lock;
 	//启动到现在走过的滴答数，等同于current
 	uint32_t time;
-	// 开始的系统时间
+	// 开始的系统时间，单位为秒
 	uint32_t starttime;
+	// current是starttime到现在的时间经历的百分之一秒的时间数：单位:百分之一秒
 	uint64_t current;
-	// 得到系统启动到现在的时间
+	// 得到系统启动到现在的时间,单位:百分之一秒
 	uint64_t current_point;
 };
 
@@ -246,12 +247,15 @@ skynet_timeout(uint32_t handle, int time, int session) {
 // walltime字面意思是挂钟时间，实际上就是指的是现实的时间，这是由变量xtime来记录的。
 // 系统每次启动时将CMOS上的RTC时间读入xtime，这个值是"自1970-01-01起经历的秒数、本秒中经历的纳秒数"，
 // 每来一个timer interrupt，也需要去更新xtime。
-
 static void
 systime(uint32_t *sec, uint32_t *cs) {
 	struct timespec ti;
+	// CLOCK_REALTIME：相对时间，从1970.1.1到目前的时间。更改系统时间会更改获取的值。它以系统时间为坐标。
+	// 字面意思: wall time挂钟时间，表示现实的时间，由变量xtime来记录的。
 	clock_gettime(CLOCK_REALTIME, &ti);
+	// sec记录的是秒
 	*sec = (uint32_t)ti.tv_sec;
+	// 注意：cs返回的是百分之一秒,cs应该是：centi-:百,百分之一
 	*cs = (uint32_t)(ti.tv_nsec / 10000000);
 }
 
@@ -260,29 +264,41 @@ static uint64_t
 gettime() {
 	uint64_t t;
 	struct timespec ti;
+	//CLOCK_MONOTONIC:从系统启动这一刻起开始计时,不受系统时间被用户改变的影响
 	clock_gettime(CLOCK_MONOTONIC, &ti);
+	// 注意这个都是计算百分之一秒为单位，使用秒乘以100
 	t = (uint64_t)ti.tv_sec * 100;
+	// 纳秒除以10的7次方，也是转换为百分之一秒
 	t += ti.tv_nsec / 10000000;
 	return t;
 }
 
+// 更新时间
 void
 skynet_updatetime(void) {
+	// 得到现在的时间点
 	uint64_t cp = gettime();
+	// 如果现在的时间点比上次的还小，打印错误，并赋值
 	if(cp < TI->current_point) {
 		skynet_error(NULL, "time diff error: change from %lld to %lld", cp, TI->current_point);
 		TI->current_point = cp;
-	} else if (cp != TI->current_point) {
+	} 
+	// 如果时间超过百分之一秒
+	else if (cp != TI->current_point) {
 		uint32_t diff = (uint32_t)(cp - TI->current_point);
+		// 更新时间
 		TI->current_point = cp;
+		// 加上偏差
 		TI->current += diff;
 		int i;
+		// 更新计时器
 		for (i=0;i<diff;i++) {
 			timer_update(TI);
 		}
 	}
 }
 
+// 
 uint32_t
 skynet_starttime(void) {
 	return TI->starttime;
@@ -299,10 +315,10 @@ skynet_timer_init(void) {
 	// 创建一个全局的时间管理结构
 	TI = timer_create_timer();
 	uint32_t current = 0;
-	// 获取开始的系统时间
+	// 获取开始的系统时间，注意：starttime的单位是秒，而current的单位是百分之一秒
 	systime(&TI->starttime, &current);
 	TI->current = current;
-	// 得到系统启动到现在的时间
+	// 得到系统启动到现在的时间，百分之一秒为计时单位
 	TI->current_point = gettime();
 }
 
