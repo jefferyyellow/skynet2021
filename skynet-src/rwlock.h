@@ -5,17 +5,20 @@
 
 #include "atomic.h"
 
+// 读写锁
 struct rwlock {
 	ATOM_INT write;
 	ATOM_INT read;
 };
 
+// 读写锁初始化
 static inline void
 rwlock_init(struct rwlock *lock) {
 	ATOM_INIT(&lock->write, 0);
 	ATOM_INIT(&lock->read, 0);
 }
 
+// 读锁
 static inline void
 rwlock_rlock(struct rwlock *lock) {
 	for (;;) {
@@ -29,6 +32,7 @@ rwlock_rlock(struct rwlock *lock) {
 	}
 }
 
+// 写锁
 static inline void
 rwlock_wlock(struct rwlock *lock) {
 	int clear = 0;
@@ -36,11 +40,13 @@ rwlock_wlock(struct rwlock *lock) {
 	while(ATOM_LOAD(&lock->read)) {}
 }
 
+// 解写锁
 static inline void
 rwlock_wunlock(struct rwlock *lock) {
 	ATOM_STORE(&lock->write, 0);
 }
 
+// 解读锁
 static inline void
 rwlock_runlock(struct rwlock *lock) {
 	ATOM_FDEC(&lock->read);

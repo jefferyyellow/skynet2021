@@ -29,7 +29,7 @@ skynet_getenv(const char *key) {
 	const char * result = lua_tostring(L, -1);
 	// 恢复栈
 	lua_pop(L, 1);
-
+	
 	SPIN_UNLOCK(E)
 
 	return result;

@@ -19,27 +19,32 @@ struct spinlock {
 	atomic_flag_ lock;
 };
 
+// 自旋锁初始化
 static inline void
 spinlock_init(struct spinlock *lock) {
 	atomic_flag_ v = ATOMIC_FLAG_INIT_;
 	lock->lock = v;
 }
 
+// 自旋锁加锁
 static inline void
 spinlock_lock(struct spinlock *lock) {
 	while (atomic_flag_test_and_set_(&lock->lock)) {}
 }
 
+// 自旋锁尝试加锁
 static inline int
 spinlock_trylock(struct spinlock *lock) {
 	return atomic_flag_test_and_set_(&lock->lock) == 0;
 }
 
+// 自旋锁解锁
 static inline void
 spinlock_unlock(struct spinlock *lock) {
 	atomic_flag_clear_(&lock->lock);
 }
 
+// 自旋锁销毁
 static inline void
 spinlock_destroy(struct spinlock *lock) {
 	(void) lock;

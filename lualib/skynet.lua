@@ -858,6 +858,7 @@ function skynet.dispatch_message(...)
 	assert(succ, tostring(err))
 end
 
+-- 创建一个lua层服务
 function skynet.newservice(name, ...)
 	return skynet.call(".launcher", "lua" , "LAUNCH", "snlua", name, ...)
 end

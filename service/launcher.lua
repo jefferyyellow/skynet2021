@@ -90,8 +90,11 @@ function command.REMOVE(_, handle, kill)
 	return NORET
 end
 
+
+-- 启动一个服务
 local function launch_service(service, ...)
 	local param = table.concat({...}, " ")
+	-- 调用启动服务函数
 	local inst = skynet.launch(service, param)
 	local session = skynet.context()
 	local response = skynet.response()
@@ -106,6 +109,7 @@ local function launch_service(service, ...)
 	return inst
 end
 
+-- 启动一个服务
 function command.LAUNCH(_, service, ...)
 	launch_service(service, ...)
 	return NORET

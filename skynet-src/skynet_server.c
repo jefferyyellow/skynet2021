@@ -140,6 +140,7 @@ struct drop_t {
 	uint32_t handle;
 };
 
+// 释放消息，并且给源实例发送错误消息回去
 static void
 drop_message(struct skynet_message *msg, void *ud) {
 	struct drop_t *d = ud;
@@ -150,19 +151,25 @@ drop_message(struct skynet_message *msg, void *ud) {
 	skynet_send(NULL, source, msg->source, PTYPE_ERROR, 0, NULL, 0);
 }
 
+// 创建一个新的上下文
 struct skynet_context * 
 skynet_context_new(const char * name, const char *param) {
+	// 得到名字对应的module
 	struct skynet_module * mod = skynet_module_query(name);
 
 	if (mod == NULL)
 		return NULL;
 
+	// 创建实例
 	void *inst = skynet_module_instance_create(mod);
 	if (inst == NULL)
 		return NULL;
+
+	// 创建上下文
 	struct skynet_context * ctx = skynet_malloc(sizeof(*ctx));
 	CHECKCALLING_INIT(ctx)
 
+	// 初始化属性
 	ctx->mod = mod;
 	ctx->instance = inst;
 	ATOM_INIT(&ctx->ref , 2);
@@ -179,13 +186,17 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->message_count = 0;
 	ctx->profile = G_NODE.profile;
 	// Should set to 0 first to avoid skynet_handle_retireall get an uninitialized handle
+	// 应该首先设置为0，避免skynet_handle_retireall得到为初始化的句柄
 	ctx->handle = 0;	
 	ctx->handle = skynet_handle_register(ctx);
+	// 创建消息队列
 	struct message_queue * queue = ctx->queue = skynet_mq_create(ctx->handle);
 	// init function maybe use ctx->handle, so it must init at last
+	// 初始化函数可能用到实例的句柄（ctx->handle），所以必须先初始化
 	context_inc();
 
 	CHECKCALLING_BEGIN(ctx)
+	// 初始化模块
 	int r = skynet_module_instance_init(mod, inst, ctx, param);
 	CHECKCALLING_END(ctx)
 	if (r == 0) {
@@ -193,17 +204,21 @@ skynet_context_new(const char * name, const char *param) {
 		if (ret) {
 			ctx->init = true;
 		}
+		// 压入全局队列中
 		skynet_globalmq_push(queue);
 		if (ret) {
 			skynet_error(ret, "LAUNCH %s %s", name, param ? param : "");
 		}
 		return ret;
 	} else {
+		// 启动失败
 		skynet_error(ctx, "FAILED launch %s", name);
 		uint32_t handle = ctx->handle;
 		skynet_context_release(ctx);
+		// 释放对应的句柄
 		skynet_handle_retire(handle);
 		struct drop_t d = { handle };
+		// 释放消息队列
 		skynet_mq_release(queue, drop_message, &d);
 		return NULL;
 	}
@@ -583,46 +598,56 @@ cmd_kill(struct skynet_context * context, const char * param) {
 	return NULL;
 }
 
+// 启动一个新得实列
 static const char *
 cmd_launch(struct skynet_context * context, const char * param) {
 	size_t sz = strlen(param);
 	char tmp[sz+1];
 	strcpy(tmp,param);
 	char * args = tmp;
+	// 从原来得参数里面得到模块名
 	char * mod = strsep(&args, " \t\r\n");
+	// 从原来得参数里面得到
 	args = strsep(&args, "\r\n");
+	// 创建新得实例
 	struct skynet_context * inst = skynet_context_new(mod,args);
 	if (inst == NULL) {
 		return NULL;
 	} else {
+		// 将创建好的句柄转换成字符串，然后返回
 		id_to_hex(context->result, inst->handle);
 		return context->result;
 	}
 }
 
+// 得到环境变量
 static const char *
 cmd_getenv(struct skynet_context * context, const char * param) {
 	return skynet_getenv(param);
 }
 
+// 设置环境变量
 static const char *
 cmd_setenv(struct skynet_context * context, const char * param) {
 	size_t sz = strlen(param);
 	char key[sz+1];
 	int i;
+	// 找到前面空格前面的部分
 	for (i=0;param[i] != ' ' && param[i];i++) {
 		key[i] = param[i];
 	}
 	if (param[i] == '\0')
 		return NULL;
-
+	// 空格前面的部分作为键
 	key[i] = '\0';
+	// 空格后面的部分作为值
 	param += i+1;
 	
 	skynet_setenv(key,param);
 	return NULL;
 }
 
+// 得到开始时间
 static const char *
 cmd_starttime(struct skynet_context * context, const char * param) {
 	uint32_t sec = skynet_starttime();
@@ -630,15 +655,18 @@ cmd_starttime(struct skynet_context * context, const char * param) {
 	return context->result;
 }
 
+// 中止，退出所有的实例
 static const char *
 cmd_abort(struct skynet_context * context, const char * param) {
 	skynet_handle_retireall();
 	return NULL;
 }
 
+// 获得或者设置句柄
 static const char *
 cmd_monitor(struct skynet_context * context, const char * param) {
 	uint32_t handle=0;
+	// 如果参数为空，返回当前的服务
 	if (param == NULL || param[0] == '\0') {
 		if (G_NODE.monitor_exit) {
 			// return current monitor serivce
@@ -647,28 +675,38 @@ cmd_monitor(struct skynet_context * context, const char * param) {
 		}
 		return NULL;
 	} else {
+		// 得到对应参数的句柄
 		handle = tohandle(context, param);
 	}
+	// 设置监控退出的句柄
 	G_NODE.monitor_exit = handle;
 	return NULL;
 }
 
+// 输出一些状态：比如实例消息的长度，
 static const char *
 cmd_stat(struct skynet_context * context, const char * param) {
+	// 消息的长度
 	if (strcmp(param, "mqlen") == 0) {
 		int len = skynet_mq_length(context->queue);
 		sprintf(context->result, "%d", len);
-	} else if (strcmp(param, "endless") == 0) {
+	} 
+	// 消息是否拥堵住
+	else if (strcmp(param, "endless") == 0) {
 		if (context->endless) {
 			strcpy(context->result, "1");
 			context->endless = false;
 		} else {
 			strcpy(context->result, "0");
 		}
-	} else if (strcmp(param, "cpu") == 0) {
+	} 
+	// cpu的消耗
+	else if (strcmp(param, "cpu") == 0) {
 		double t = (double)context->cpu_cost / 1000000.0;	// microsec
 		sprintf(context->result, "%lf", t);
-	} else if (strcmp(param, "time") == 0) {
+	} 
+	// cpu的消耗
+	else if (strcmp(param, "time") == 0) {
 		if (context->profile) {
 			uint64_t ti = skynet_thread_time() - context->cpu_start;
 			double t = (double)ti / 1000000.0;	// microsec
@@ -676,7 +714,9 @@ cmd_stat(struct skynet_context * context, const char * param) {
 		} else {
 			strcpy(context->result, "0");
 		}
-	} else if (strcmp(param, "message") == 0) {
+	} 
+	// 处理的消息的数目
+	else if (strcmp(param, "message") == 0) {
 		sprintf(context->result, "%d", context->message_count);
 	} else {
 		context->result[0] = '\0';
@@ -684,17 +724,22 @@ cmd_stat(struct skynet_context * context, const char * param) {
 	return context->result;
 }
 
+// 打开日志
 static const char *
 cmd_logon(struct skynet_context * context, const char * param) {
+	// 参数转化为句柄
 	uint32_t handle = tohandle(context, param);
 	if (handle == 0)
 		return NULL;
+	// 找到句柄对应的实例
 	struct skynet_context * ctx = skynet_handle_grab(handle);
 	if (ctx == NULL)
 		return NULL;
 	FILE *f = NULL;
+	// 是否有日志
 	FILE * lastf = (FILE *)ATOM_LOAD(&ctx->logfile);
 	if (lastf == NULL) {
+		// 打开日志
 		f = skynet_log_open(context, handle);
 		if (f) {
 			uintptr_t exp = 0;
@@ -708,14 +753,18 @@ cmd_logon(struct skynet_context * context, const char * param) {
 	return NULL;
 }
 
+// 关闭日志
 static const char *
 cmd_logoff(struct skynet_context * context, const char * param) {
+	// 参数转成句柄
 	uint32_t handle = tohandle(context, param);
 	if (handle == 0)
 		return NULL;
+	// 得到实例
 	struct skynet_context * ctx = skynet_handle_grab(handle);
 	if (ctx == NULL)
 		return NULL;
+	// 打开日志
 	FILE * f = (FILE *)ATOM_LOAD(&ctx->logfile);
 	if (f) {
 		// logfile may close in other thread
@@ -728,14 +777,19 @@ cmd_logoff(struct skynet_context * context, const char * param) {
 	return NULL;
 }
 
+// 给对应的实例发信号
 static const char *
 cmd_signal(struct skynet_context * context, const char * param) {
+	// 从参数中得到句柄
 	uint32_t handle = tohandle(context, param);
 	if (handle == 0)
 		return NULL;
+	// 得到句柄对应的实例
 	struct skynet_context * ctx = skynet_handle_grab(handle);
 	if (ctx == NULL)
 		return NULL;
+	
+	// 从参数中得到信号
 	param = strchr(param, ' ');
 	int sig = 0;
 	if (param) {
@@ -783,17 +837,22 @@ skynet_command(struct skynet_context * context, const char * cmd , const char * 
 	return NULL;
 }
 
+// 过滤参数
+// 是否需要创建会话
+// 是否需要复制数据
 static void
 _filter_args(struct skynet_context * context, int type, int *session, void ** data, size_t * sz) {
 	int needcopy = !(type & PTYPE_TAG_DONTCOPY);
 	int allocsession = type & PTYPE_TAG_ALLOCSESSION;
 	type &= 0xff;
 
+	// 需要创建会话
 	if (allocsession) {
 		assert(*session == 0);
 		*session = skynet_context_newsession(context);
 	}
 
+	// 需要拷贝数据
 	if (needcopy && *data) {
 		char * msg = skynet_malloc(*sz+1);
 		memcpy(msg, *data, *sz);
@@ -804,8 +863,10 @@ _filter_args(struct skynet_context * context, int type, int *session, void ** da
 	*sz |= (size_t)type << MESSAGE_TYPE_SHIFT;
 }
 
+// 发消息
 int
 skynet_send(struct skynet_context * context, uint32_t source, uint32_t destination , int type, int session, void * data, size_t sz) {
+	// 校验消息尺寸
 	if ((sz & MESSAGE_TYPE_MASK) != sz) {
 		skynet_error(context, "The message to %x is too large", destination);
 		if (type & PTYPE_TAG_DONTCOPY) {
@@ -813,12 +874,15 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 		}
 		return -2;
 	}
+	// 处理参数，比如创建会话和参数拷贝
 	_filter_args(context, type, &session, (void **)&data, &sz);
 
+	// 如果源设置为0，就是当前实例
 	if (source == 0) {
 		source = context->handle;
 	}
 
+	// 目标为0，且有数据
 	if (destination == 0) {
 		if (data) {
 			skynet_error(context, "Destination address can't be 0");
@@ -828,12 +892,16 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 
 		return session;
 	}
+	
+	// 目标是否是集群消息
 	if (skynet_harbor_message_isremote(destination)) {
+		// 创建远程消息，并且对其中的各个字段赋值
 		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg));
 		rmsg->destination.handle = destination;
 		rmsg->message = data;
 		rmsg->sz = sz & MESSAGE_TYPE_MASK;
 		rmsg->type = sz >> MESSAGE_TYPE_SHIFT;
+		// 通过集群的发送接口发送出去
 		skynet_harbor_send(rmsg, source, session);
 	} else {
 		struct skynet_message smsg;
@@ -841,7 +909,8 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 		smsg.session = session;
 		smsg.data = data;
 		smsg.sz = sz;
-
+		
+		// 将消息发送到handle对应得实例中去
 		if (skynet_context_push(destination, &smsg)) {
 			skynet_free(data);
 			return -1;
@@ -852,13 +921,19 @@ skynet_send(struct skynet_context * context, uint32_t source, uint32_t destinati
 
 int
 skynet_sendname(struct skynet_context * context, uint32_t source, const char * addr , int type, int session, void * data, size_t sz) {
+	// 如果源设置为0，就是当前实例
 	if (source == 0) {
 		source = context->handle;
 	}
+
+	// 分析目标地址
 	uint32_t des = 0;
+	// ：开头，直接转换为句柄
 	if (addr[0] == ':') {
 		des = strtoul(addr+1, NULL, 16);
-	} else if (addr[0] == '.') {
+	} 
+	// 点开头，通过名字搜索句柄
+	else if (addr[0] == '.') {
 		des = skynet_handle_findname(addr + 1);
 		if (des == 0) {
 			if (type & PTYPE_TAG_DONTCOPY) {
@@ -866,7 +941,10 @@ skynet_sendname(struct skynet_context * context, uint32_t source, const char * a
 			}
 			return -1;
 		}
-	} else {
+	} 
+	// 集群中其他实例的消息
+	else {
+		// 校验消息尺寸
 		if ((sz & MESSAGE_TYPE_MASK) != sz) {
 			skynet_error(context, "The message to %s is too large", addr);
 			if (type & PTYPE_TAG_DONTCOPY) {
@@ -876,25 +954,31 @@ skynet_sendname(struct skynet_context * context, uint32_t source, const char * a
 		}
 		_filter_args(context, type, &session, (void **)&data, &sz);
 
+		// 直接发送给集群
 		struct remote_message * rmsg = skynet_malloc(sizeof(*rmsg));
+		// 设置了目标实例的名字，然后目标实例的句柄为0
 		copy_name(rmsg->destination.name, addr);
 		rmsg->destination.handle = 0;
 		rmsg->message = data;
 		rmsg->sz = sz & MESSAGE_TYPE_MASK;
 		rmsg->type = sz >> MESSAGE_TYPE_SHIFT;
-
+		
+		// 通过集群的发送接口发送出去
 		skynet_harbor_send(rmsg, source, session);
 		return session;
 	}
 
+	// 分析出目标地址后，在调用发送函数
 	return skynet_send(context, source, des, type, session, data, sz);
 }
 
+// 得到实例的句柄
 uint32_t 
 skynet_context_handle(struct skynet_context *ctx) {
 	return ctx->handle;
 }
 
+// 设置实例的回调函数和数据
 void 
 skynet_callback(struct skynet_context * context, void *ud, skynet_cb cb) {
 	context->cb = cb;

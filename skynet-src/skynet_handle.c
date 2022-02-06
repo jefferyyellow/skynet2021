@@ -124,12 +124,14 @@ skynet_handle_retire(uint32_t handle) {
 	return ret;
 }
 
+// 所有的实例都退出
 void 
 skynet_handle_retireall() {
 	struct handle_storage *s = H;
 	for (;;) {
 		int n=0;
 		int i;
+		// 遍历所有的slot
 		for (i=0;i<s->slot_size;i++) {
 			rwlock_rlock(&s->lock);
 			struct skynet_context * ctx = s->slot[i];
@@ -148,6 +150,7 @@ skynet_handle_retireall() {
 	}
 }
 
+// 通过handle得到实例
 struct skynet_context * 
 skynet_handle_grab(uint32_t handle) {
 	struct handle_storage *s = H;

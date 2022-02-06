@@ -22,6 +22,7 @@ skynet_monitor_new() {
 	return ret;
 }
 
+// 是否监视信息分配的内存
 void 
 skynet_monitor_delete(struct skynet_monitor *sm) {
 	skynet_free(sm);
@@ -34,8 +35,10 @@ skynet_monitor_trigger(struct skynet_monitor *sm, uint32_t source, uint32_t dest
 	ATOM_FINC(&sm->version);
 }
 
+// 监控检查函数
 void 
 skynet_monitor_check(struct skynet_monitor *sm) {
+	// 版本号检查
 	if (sm->version == sm->check_version) {
 		if (sm->destination) {
 			skynet_context_endless(sm->destination);

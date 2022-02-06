@@ -19,6 +19,7 @@
 #include <signal.h>
 
 struct monitor {
+	// 监视的工作线程数
 	int count;
 	struct skynet_monitor ** m;
 	pthread_cond_t cond;
@@ -28,8 +29,11 @@ struct monitor {
 };
 
 struct worker_parm {
+	// 全局监控信息
 	struct monitor *m;
+	// 工作线程的ID（索引）
 	int id;
+	// 权重
 	int weight;
 };
 
@@ -41,9 +45,10 @@ handle_hup(int signal) {
 		SIG = 1;
 	}
 }
-
+// 是否终止了
 #define CHECK_ABORT if (skynet_context_total()==0) break;
 
+// 创建线程，失败打印错误信息并且退出程序
 static void
 create_thread(pthread_t *thread, void *(*start_routine) (void *), void *arg) {
 	if (pthread_create(thread,NULL, start_routine, arg)) {
@@ -52,17 +57,21 @@ create_thread(pthread_t *thread, void *(*start_routine) (void *), void *arg) {
 	}
 }
 
+// 唤醒线程
 static void
 wakeup(struct monitor *m, int busy) {
 	if (m->sleep >= m->count - busy) {
 		// signal sleep worker, "spurious wakeup" is harmless
+		// 给睡眠的工作线程发信号，“虚假唤醒”是无害的
 		pthread_cond_signal(&m->cond);
 	}
 }
 
+// socket线程函数
 static void *
 thread_socket(void *p) {
 	struct monitor * m = p;
+	// 初始化线程类型
 	skynet_initthread(THREAD_SOCKET);
 	for (;;) {
 		int r = skynet_socket_poll();
@@ -72,32 +81,41 @@ thread_socket(void *p) {
 			CHECK_ABORT
 			continue;
 		}
+		// 唤醒工作线程
 		wakeup(m,0);
 	}
 	return NULL;
 }
 
+// 是否监视信息占用的内存
 static void
 free_monitor(struct monitor *m) {
 	int i;
 	int n = m->count;
+	// 释放各个工作线程的监视信息
 	for (i=0;i<n;i++) {
 		skynet_monitor_delete(m->m[i]);
 	}
 	pthread_mutex_destroy(&m->mutex);
 	pthread_cond_destroy(&m->cond);
+	// 释放各个工作线程的监视信息
 	skynet_free(m->m);
+	// 是否全局监视信息
 	skynet_free(m);
 }
 
+
+// 监控线程函数
 static void *
 thread_monitor(void *p) {
 	struct monitor * m = p;
 	int i;
 	int n = m->count;
+	// 初始化为监控线程函数
 	skynet_initthread(THREAD_MONITOR);
 	for (;;) {
 		CHECK_ABORT
+		// 监控所有的工作线程
 		for (i=0;i<n;i++) {
 			skynet_monitor_check(m->m[i]);
 		}
@@ -113,7 +131,7 @@ thread_monitor(void *p) {
 static void
 signal_hup() {
 	// make log file reopen
-
+	// 日志文件重开
 	struct skynet_message smsg;
 	smsg.source = 0;
 	smsg.session = 0;
@@ -155,6 +173,7 @@ thread_timer(void *p) {
 	return NULL;
 }
 
+// 工作线程函数
 static void *
 thread_worker(void *p) {
 	struct worker_parm *wp = p;
@@ -162,15 +181,20 @@ thread_worker(void *p) {
 	int weight = wp->weight;
 	struct monitor *m = wp->m;
 	struct skynet_monitor *sm = m->m[id];
+	// 初始化为工作线程
 	skynet_initthread(THREAD_WORKER);
 	struct message_queue * q = NULL;
 	while (!m->quit) {
+		// 消息分发
 		q = skynet_context_message_dispatch(sm, q, weight);
+		// 返回空，就是没有消息了
 		if (q == NULL) {
 			if (pthread_mutex_lock(&m->mutex) == 0) {
+				// 睡觉去吧
 				++ m->sleep;
 				// "spurious wakeup" is harmless,
 				// because skynet_context_message_dispatch() can be call at any time.
+				// 进入等待信号
 				if (!m->quit)
 					pthread_cond_wait(&m->cond, &m->mutex);
 				-- m->sleep;
@@ -187,30 +211,37 @@ thread_worker(void *p) {
 static void
 start(int thread) {
 	pthread_t pid[thread+3];
-
+	// 分配全局监视需要的内存
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	memset(m, 0, sizeof(*m));
+	// 监视的线程数量
 	m->count = thread;
 	m->sleep = 0;
 
+	// 分配单个线程监视信息所需内存
 	m->m = skynet_malloc(thread * sizeof(struct skynet_monitor *));
 	int i;
 	for (i=0;i<thread;i++) {
 		m->m[i] = skynet_monitor_new();
 	}
+
+	// 初始化全局监视的互斥体
 	if (pthread_mutex_init(&m->mutex, NULL)) {
 		fprintf(stderr, "Init mutex error");
 		exit(1);
 	}
+	// 初始化全局监视的条件变量
 	if (pthread_cond_init(&m->cond, NULL)) {
 		fprintf(stderr, "Init cond error");
 		exit(1);
 	}
 
+	// 创建监视线程，时间线程和socket线程
 	create_thread(&pid[0], thread_monitor, m);
 	create_thread(&pid[1], thread_timer, m);
 	create_thread(&pid[2], thread_socket, m);
 
+	// 权重
 	static int weight[] = { 
 		-1, -1, -1, -1, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 
@@ -218,20 +249,26 @@ start(int thread) {
 		3, 3, 3, 3, 3, 3, 3, 3, };
 	struct worker_parm wp[thread];
 	for (i=0;i<thread;i++) {
+		// 全局监控信息
 		wp[i].m = m;
+		// 工作线程id
 		wp[i].id = i;
+		// 设置权重，超过数组的都设置为0
 		if (i < sizeof(weight)/sizeof(weight[0])) {
 			wp[i].weight= weight[i];
 		} else {
 			wp[i].weight = 0;
 		}
+		// 创建工作线程
 		create_thread(&pid[i+3], thread_worker, &wp[i]);
 	}
 
+	// 等待所有的线程退出
 	for (i=0;i<thread+3;i++) {
 		pthread_join(pid[i], NULL); 
 	}
 
+	// 是否监视
 	free_monitor(m);
 }
 
@@ -294,21 +331,26 @@ skynet_start(struct skynet_config * config) {
 	skynet_socket_init();
 	skynet_profile_enable(config->profile);
 
+	// 默认为"logger"，你可以配置为你定制的log服务
 	struct skynet_context *ctx = skynet_context_new(config->logservice, config->logger);
 	if (ctx == NULL) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);
 		exit(1);
 	}
 
+	// 在全局的名称关联表中，
 	skynet_handle_namehandle(skynet_context_handle(ctx), "logger");
 
 	bootstrap(ctx, config->bootstrap);
-
+	// 启动
 	start(config->thread);
 
 	// harbor_exit may call socket send, so it should exit before socket_free
+	// 通知集群退出
 	skynet_harbor_exit();
+	// 释放socket
 	skynet_socket_free();
+	// 如果是后台程序，进行后台程序清理
 	if (config->daemon) {
 		daemon_exit(config->daemon);
 	}
