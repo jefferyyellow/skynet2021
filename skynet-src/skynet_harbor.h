@@ -19,10 +19,15 @@ struct remote_message {
 	int type;
 };
 
+// 消息发送给服务器集群
 void skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session);
+// 句柄是否为远程句柄，就是集群里面其他服务器的句柄
 int skynet_harbor_message_isremote(uint32_t handle);
+// 初始化集群服务
 void skynet_harbor_init(int harbor);
+// 开启集群服务
 void skynet_harbor_start(void * ctx);
+// 集群服务退出
 void skynet_harbor_exit();
 
 #endif

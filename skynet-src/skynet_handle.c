@@ -40,6 +40,7 @@ struct handle_storage {
 // 全局的服务列表中
 static struct handle_storage *H = NULL;
 
+// 服务注册
 uint32_t
 skynet_handle_register(struct skynet_context *ctx) {
 	struct handle_storage *s = H;
@@ -50,30 +51,38 @@ skynet_handle_register(struct skynet_context *ctx) {
 		int i;
 		uint32_t handle = s->handle_index;
 		for (i=0;i<s->slot_size;i++,handle++) {
+			// 已经大于最大的了，回转
 			if (handle > HANDLE_MASK) {
 				// 0 is reserved
 				handle = 1;
 			}
+			// 找到合适的空位
 			int hash = handle & (s->slot_size-1);
 			if (s->slot[hash] == NULL) {
 				s->slot[hash] = ctx;
+				// 下一个服务使用的索引
 				s->handle_index = handle + 1;
 
 				rwlock_wunlock(&s->lock);
-
+				// 索引与上港口ID
 				handle |= s->harbor;
 				return handle;
 			}
 		}
+
+		// 真的没找到，就是一种塞满了，需要扩充
 		assert((s->slot_size*2 - 1) <= HANDLE_MASK);
 		struct skynet_context ** new_slot = skynet_malloc(s->slot_size * 2 * sizeof(struct skynet_context *));
 		memset(new_slot, 0, s->slot_size * 2 * sizeof(struct skynet_context *));
+		// 将以前的重新hash一次，放到对于的slot里面去
 		for (i=0;i<s->slot_size;i++) {
 			int hash = skynet_context_handle(s->slot[i]) & (s->slot_size * 2 - 1);
 			assert(new_slot[hash] == NULL);
 			new_slot[hash] = s->slot[i];
 		}
+		// 将原来的释放
 		skynet_free(s->slot);
+		// 设置新的slot
 		s->slot = new_slot;
 		s->slot_size *= 2;
 	}
@@ -269,6 +278,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	return result;
 }
 
+// 命名一个句柄
 const char * 
 skynet_handle_namehandle(uint32_t handle, const char *name) {
 	rwlock_wlock(&H->lock);

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <assert.h>
 
+// 远程的服务（就是集群链接服务）
 static struct skynet_context * REMOTE = 0;
 // 每个节点中有一个特殊的服务叫做 harbor (港口) ，当一个消息的目的地址的高 8 位和本节点不同时，消息被投递到 harbor 服务中，
 // 它再通过 tcp 连接传输到目的节点的 harbor 服务中。
@@ -18,6 +19,7 @@ invalid_type(int type) {
 	return type != PTYPE_SYSTEM && type != PTYPE_HARBOR;
 }
 
+// 发送给其他服务器集群
 void 
 skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session) {
 	assert(invalid_type(rmsg->type) && REMOTE);
@@ -48,6 +50,7 @@ skynet_harbor_start(void *ctx) {
 	REMOTE = ctx;
 }
 
+// 退出集群服务
 void
 skynet_harbor_exit() {
 	struct skynet_context * ctx = REMOTE;
