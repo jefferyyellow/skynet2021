@@ -13,11 +13,14 @@
 
 static struct socket_server * SOCKET_SERVER = NULL;
 
+// skynet的Socket初始化
 void 
 skynet_socket_init() {
+	// 创建socket服务器
 	SOCKET_SERVER = socket_server_create(skynet_now());
 }
 
+// skynet的Socket退出
 void
 skynet_socket_exit() {
 	socket_server_exit(SOCKET_SERVER);

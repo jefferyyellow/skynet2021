@@ -13,15 +13,17 @@ struct skynet_context;
 #define SKYNET_SOCKET_TYPE_ERROR 5
 #define SKYNET_SOCKET_TYPE_UDP 6
 #define SKYNET_SOCKET_TYPE_WARNING 7
-
+// skynet_socket服务间传递消息结构
 struct skynet_socket_message {
 	int type;
 	int id;
 	int ud;
-	char * buffer;
+	char * buffer; //消息携带数据
 };
 
+// skynet的Socket初始化
 void skynet_socket_init();
+// skynet的Socket退出
 void skynet_socket_exit();
 void skynet_socket_free();
 int skynet_socket_poll();

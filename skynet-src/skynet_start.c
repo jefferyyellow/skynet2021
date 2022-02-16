@@ -328,6 +328,7 @@ skynet_start(struct skynet_config * config) {
 	skynet_module_init(config->module_path);
 	// 
 	skynet_timer_init();
+	// 创建服务器
 	skynet_socket_init();
 	skynet_profile_enable(config->profile);
 

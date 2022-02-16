@@ -3,13 +3,15 @@
 
 #include <stdbool.h>
 
+// 统一使用的句柄类型
 typedef int poll_fd;
 
+// 转存的内核通知的结构体
 struct event {
-	void * s;
-	bool read;
-	bool write;
-	bool error;
+	void * s;		// 通知的句柄
+	bool read;		// 是否可读
+	bool write;		// 是否可写
+	bool error;		// 是否出现错误
 	bool eof;
 };
 
